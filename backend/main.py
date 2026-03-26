@@ -1,24 +1,20 @@
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
-from backend.database import engine, Base
-from backend.api import reports, chat, documents
 
 logging.basicConfig(level=getattr(logging, settings.log_level))
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Panel 1 — Mine Reporting System", version="0.1.0")
-
-import os
 
 allowed_origins = [
     "http://localhost:5173",
     "http://localhost:3000",
 ]
-# Allow Vercel deployment URLs
 vercel_url = os.environ.get("VERCEL_URL")
 if vercel_url:
     allowed_origins.append(f"https://{vercel_url}")
@@ -34,8 +30,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create tables (for dev; production uses Alembic)
-Base.metadata.create_all(bind=engine)
+
+@app.on_event("startup")
+def on_startup():
+    """Create tables on startup instead of at import time."""
+    try:
+        from backend.database import engine, Base
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created/verified")
+    except Exception as e:
+        logger.error(f"Failed to create tables: {e}")
+
+
+from backend.api import reports, chat, documents
 
 app.include_router(reports.router)
 app.include_router(chat.router)
