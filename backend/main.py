@@ -53,30 +53,6 @@ app.include_router(chat.router)
 app.include_router(documents.router)
 
 
-@app.get("/api/test-db")
-def test_db():
-    from backend.database import get_db
-    try:
-        db = next(get_db())
-        from sqlalchemy import text
-        result = db.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public'"))
-        tables = [row[0] for row in result]
-        db.close()
-        return {"tables": tables}
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "tb": traceback.format_exc()}
-
-
 @app.get("/api/health")
 def health():
-    db_status = "unknown"
-    try:
-        from backend.database import SessionLocal
-        db = SessionLocal()
-        db.execute(__import__('sqlalchemy').text("SELECT 1"))
-        db.close()
-        db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {e}"
-    return {"status": "ok", "project": "Panel 1", "db": db_status, "db_url": settings.database_url[:30] + "..."}
+    return {"status": "ok", "project": "Panel 1"}
