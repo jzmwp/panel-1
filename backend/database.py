@@ -3,20 +3,21 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from backend.config import settings
 
+from sqlalchemy.pool import NullPool
+
 connect_args = {}
+engine_kwargs = {"echo": False, "pool_pre_ping": True}
+
 if not settings.is_postgres:
     connect_args["check_same_thread"] = False
 else:
-    # Disable prepared statements for Supabase transaction pooler (pgbouncer)
-    connect_args["options"] = "-c statement_timeout=30000"
+    # Use NullPool for Supabase transaction pooler (pgbouncer) compatibility
+    engine_kwargs["poolclass"] = NullPool
 
 engine = create_engine(
     settings.database_url,
     connect_args=connect_args,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=5 if settings.is_postgres else 0,
-    max_overflow=10 if settings.is_postgres else 0,
+    **engine_kwargs,
 )
 
 
