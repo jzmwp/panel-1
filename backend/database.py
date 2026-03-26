@@ -6,12 +6,17 @@ from backend.config import settings
 connect_args = {}
 if not settings.is_postgres:
     connect_args["check_same_thread"] = False
+else:
+    # Disable prepared statements for Supabase transaction pooler (pgbouncer)
+    connect_args["options"] = "-c statement_timeout=30000"
 
 engine = create_engine(
     settings.database_url,
     connect_args=connect_args,
     echo=False,
     pool_pre_ping=True,
+    pool_size=5 if settings.is_postgres else 0,
+    max_overflow=10 if settings.is_postgres else 0,
 )
 
 

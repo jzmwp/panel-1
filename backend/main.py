@@ -31,16 +31,13 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-def on_startup():
-    """Create tables on startup instead of at import time."""
-    try:
-        from backend.database import engine, Base
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created/verified")
-    except Exception as e:
-        logger.error(f"Failed to create tables: {e}")
-
+# Create tables eagerly (on_startup may not fire in serverless)
+try:
+    from backend.database import engine, Base
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created/verified")
+except Exception as e:
+    logger.error(f"Failed to create tables: {e}")
 
 from backend.api import reports, chat, documents
 
