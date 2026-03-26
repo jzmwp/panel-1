@@ -15,8 +15,8 @@ app = FastAPI(title="Panel 1 — Mine Reporting System", version="0.1.0")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    return JSONResponse(status_code=500, content={"error": str(exc), "traceback": traceback.format_exc()})
+    logger.exception(f"Unhandled error on {request.url.path}")
+    return JSONResponse(status_code=500, content={"error": str(exc)})
 
 allowed_origins = [
     "http://localhost:5173",

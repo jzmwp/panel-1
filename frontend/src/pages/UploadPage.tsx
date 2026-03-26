@@ -139,8 +139,16 @@ export default function UploadPage() {
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        const msg = body?.detail || body?.message || JSON.stringify(body) || `HTTP ${res.status}`;
+        const text = await res.text().catch(() => "");
+        let msg = `Upload failed (HTTP ${res.status})`;
+        try {
+          const body = JSON.parse(text);
+          msg = body?.detail || body?.error || body?.message || msg;
+        } catch {
+          if (text.includes("FUNCTION_INVOCATION_FAILED")) {
+            msg = "The server timed out processing your document. Try a smaller image or try again.";
+          }
+        }
         throw new Error(msg);
       }
 
