@@ -50,13 +50,29 @@ def _enhance_for_ocr(img):
     return img
 
 
+def _detect_mime(data: bytes) -> str:
+    """Detect actual image MIME type from file header bytes."""
+    if data[:3] == b'\xff\xd8\xff':
+        return "image/jpeg"
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return "image/png"
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return "image/webp"
+    if data[:4] in (b'II\x2a\x00', b'MM\x00\x2a'):
+        return "image/tiff"
+    if data[:5] == b'%PDF-':
+        return "application/pdf"
+    return "image/jpeg"
+
+
 def _prepare_image(filepath: str) -> tuple[str, str]:
     """Read and prepare an image for Claude Vision OCR.
     Returns (base64_data, mime_type)."""
-    mime_type = mimetypes.guess_type(filepath)[0] or "image/jpeg"
-
     with open(filepath, "rb") as f:
         raw = f.read()
+
+    # Detect actual type from content, not filename
+    mime_type = _detect_mime(raw)
 
     if HAS_PIL:
         # Enhanced path: resize and sharpen with PIL
