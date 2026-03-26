@@ -14,27 +14,56 @@ from backend.config import settings
 MAX_IMAGE_BYTES = 4_500_000  # stay under Claude's 5MB limit
 
 
+def _enhance_for_ocr(img: Image.Image) -> Image.Image:
+    """Pre-process a scanned document image to improve handwriting readability."""
+    from PIL import ImageEnhance, ImageFilter
+
+    # Convert to RGB if needed
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+    elif img.mode == "L":
+        img = img.convert("RGB")
+
+    # 1. Sharpen — makes fuzzy handwriting crisper
+    img = img.filter(ImageFilter.SHARPEN)
+
+    # 2. Boost contrast — separates ink from paper
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(1.5)
+
+    # 3. Boost brightness slightly — lightens paper, keeps ink dark
+    enhancer = ImageEnhance.Brightness(img)
+    img = enhancer.enhance(1.1)
+
+    # 4. Second sharpen pass for really fuzzy scans
+    img = img.filter(ImageFilter.SHARPEN)
+
+    # 5. Slight color boost — helps with faded ink
+    enhancer = ImageEnhance.Color(img)
+    img = enhancer.enhance(0.8)  # slightly desaturate — focuses on luminance contrast
+
+    return img
+
+
 def _prepare_image(filepath: str) -> tuple[str, str]:
-    """Read an image file and resize if needed to stay under Claude's 5MB limit.
+    """Read, enhance, and resize an image for Claude Vision OCR.
     Returns (base64_data, mime_type)."""
     mime_type = mimetypes.guess_type(filepath)[0] or "image/jpeg"
 
     with open(filepath, "rb") as f:
         raw = f.read()
 
-    # If already small enough and a supported type, use as-is
-    if len(raw) <= MAX_IMAGE_BYTES and mime_type in ("image/jpeg", "image/png", "image/gif", "image/webp"):
-        return base64.b64encode(raw).decode("utf-8"), mime_type
-
-    # Resize using Pillow
     img = Image.open(io.BytesIO(raw))
 
-    # Convert RGBA/palette to RGB for JPEG
+    # Convert RGBA/palette to RGB
     if img.mode in ("RGBA", "P", "LA"):
         img = img.convert("RGB")
 
-    # Progressively shrink until under limit
-    quality = 85
+    # Enhance for OCR
+    img = _enhance_for_ocr(img)
+
+    # Progressively shrink until under the size limit
+    quality = 90
     for scale in [1.0, 0.75, 0.5, 0.35, 0.25]:
         w, h = int(img.width * scale), int(img.height * scale)
         resized = img.resize((w, h), Image.LANCZOS) if scale < 1.0 else img
@@ -44,12 +73,12 @@ def _prepare_image(filepath: str) -> tuple[str, str]:
         data = buf.getvalue()
 
         if len(data) <= MAX_IMAGE_BYTES:
-            logger.info(f"Image resized: {len(raw)} -> {len(data)} bytes ({w}x{h}, q={quality})")
+            logger.info(f"Image prepared: {len(raw)} -> {len(data)} bytes ({w}x{h}, q={quality}, enhanced)")
             return base64.b64encode(data).decode("utf-8"), "image/jpeg"
 
         quality = max(quality - 10, 50)
 
-    # Last resort: very small
+    # Last resort
     resized = img.resize((int(img.width * 0.2), int(img.height * 0.2)), Image.LANCZOS)
     buf = io.BytesIO()
     resized.save(buf, format="JPEG", quality=50)
@@ -84,13 +113,64 @@ For common fields, always use these exact names:
 - shift (day/afternoon/night, or A/B/C/D)
 - panel (e.g. LW101, LW104)
 - submitted_by (person who filled it in)
-- crew (crew identifier)
+- crew (crew identifier e.g. A, B, C, D)
 
-For everything else, use descriptive names based on what the field represents. For gas readings at multiple locations, use arrays. For tables (like production delays), use arrays of objects.
+## Manning / Crew Section
+Production reports have a "Manning" section — usually a column on the RIGHT side of the form header. It lists the crew on the panel for that shift, GROUPED BY ROLE.
 
-Read handwriting carefully. Common abbreviations: MG=maingate, TG=tailgate, CT=cut-through, UM=undermanager, ERZ=explosion risk zone, SOP=standard operating procedure, TARP=trigger action response plan, VFI=ventilation flow indicator, SCARIN=strata control and reinforcement inspection, PUR=powered unrestricted roof, MCT=mean cycle time.
+The layout is typically:
+```
+Manning
+  Op.    Peter
+         Wayne
+         Clayton
+         Turi
+         Beau
+  Elec.  Jackson
+         Matt
+  Mech.  Josh
+         Tommy
+```
 
-If a value is illegible, set it to null. Don't guess.
+The role label (Op., Elec., Mech.) appears ONCE, and all names listed below it until the next role label belong to that role. Each line is a SEPARATE person — never merge two names on separate lines into one.
+
+CRITICAL: "Jackson" and "Matt" on separate lines means TWO electricians, not one person called "Jackson Matt".
+
+Extract manning as:
+- manning: array of objects, each with {"name": "first name or full name", "role": "operator|electrician|mechanic|deputy"}
+  Example: [{"name": "Peter", "role": "operator"}, {"name": "Wayne", "role": "operator"}, {"name": "Jackson", "role": "electrician"}]
+- manning_summary: object with counts per role
+  Example: {"operators": 5, "electricians": 2, "mechanics": 2, "total": 9}
+
+## Other Domain Knowledge
+For gas readings at multiple locations, use arrays of objects. For tables (like production delays), use arrays of objects.
+
+Common role abbreviations on forms:
+- Op/Ops = Operator(s) — coal mine workers operating equipment
+- Elec = Electrician(s)
+- Mech = Mechanical trades / Fitter(s)
+- Dep = Deputy (statutory inspection officer)
+- UM = Undermanager
+- SSM/SSE = Site Senior Manager / Site Senior Executive
+- ERZ = Explosion Risk Zone controller
+- CO = Control Room Operator
+- DO = Development Operator
+
+Common mine abbreviations:
+- MG = Maingate, TG = Tailgate, CT = Cut-through
+- SOP = Standard Operating Procedure
+- TARP = Trigger Action Response Plan
+- SCARIN = Strata Control and Reinforcement Inspection
+- PUR = Powered Unrestricted Roof support
+- MCT = Mean Cycle Time, TTPC = Time To Pick Change, TTLC = Time To Lace Change
+- SOS = Start Of Shift, EOS = End Of Shift
+- DS = Day Shift, AS = Afternoon Shift, NS = Night Shift
+- AFC = Armoured Face Conveyor, BSL = Beam Stage Loader
+- RD = Road Development, CT = Cut-through
+- VFL = Visible Felt Leadership, SLAMs = Stop Look Assess Manage
+- C/T = Cycle Time or Cut-through (context dependent)
+
+Read handwriting carefully. If a value is illegible, set it to null. Don't guess.
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON in this exact structure:
