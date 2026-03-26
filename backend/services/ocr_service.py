@@ -19,7 +19,7 @@ except ImportError:
 MAX_IMAGE_BYTES = 4_500_000  # stay under Claude's 5MB limit
 
 
-def _enhance_for_ocr(img: Image.Image) -> Image.Image:
+def _enhance_for_ocr(img):
     """Pre-process a scanned document image to improve handwriting readability."""
     from PIL import ImageEnhance, ImageFilter
 
