@@ -32,10 +32,13 @@ async def upload_documents(
             results.append({"filename": file.filename, "status": "error", "error": "Unsupported file type"})
             continue
 
-        os.makedirs(settings.upload_dir, exist_ok=True)
+        # Use /tmp on serverless, or upload_dir locally
+        import tempfile
+        upload_dir = settings.upload_dir if os.path.exists(settings.upload_dir) else tempfile.gettempdir()
+        os.makedirs(upload_dir, exist_ok=True)
         file_id = uuid.uuid4().hex[:12]
         saved_name = f"{file_id}{ext}"
-        filepath = os.path.join(settings.upload_dir, saved_name)
+        filepath = os.path.join(upload_dir, saved_name)
 
         contents = await file.read()
         with open(filepath, "wb") as f:

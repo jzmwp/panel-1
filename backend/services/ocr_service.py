@@ -51,44 +51,41 @@ def _enhance_for_ocr(img):
 
 
 def _prepare_image(filepath: str) -> tuple[str, str]:
-    """Read, enhance, and resize an image for Claude Vision OCR.
+    """Read and prepare an image for Claude Vision OCR.
     Returns (base64_data, mime_type)."""
     mime_type = mimetypes.guess_type(filepath)[0] or "image/jpeg"
 
     with open(filepath, "rb") as f:
         raw = f.read()
 
-    img = Image.open(io.BytesIO(raw))
+    if HAS_PIL:
+        # Enhanced path: resize and sharpen with PIL
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        img = _enhance_for_ocr(img)
 
-    # Convert RGBA/palette to RGB
-    if img.mode in ("RGBA", "P", "LA"):
-        img = img.convert("RGB")
+        quality = 90
+        for scale in [1.0, 0.75, 0.5, 0.35, 0.25]:
+            w, h = int(img.width * scale), int(img.height * scale)
+            resized = img.resize((w, h), Image.LANCZOS) if scale < 1.0 else img
+            buf = io.BytesIO()
+            resized.save(buf, format="JPEG", quality=quality, optimize=True)
+            data = buf.getvalue()
+            if len(data) <= MAX_IMAGE_BYTES:
+                return base64.b64encode(data).decode("utf-8"), "image/jpeg"
+            quality = max(quality - 10, 50)
 
-    # Enhance for OCR
-    img = _enhance_for_ocr(img)
-
-    # Progressively shrink until under the size limit
-    quality = 90
-    for scale in [1.0, 0.75, 0.5, 0.35, 0.25]:
-        w, h = int(img.width * scale), int(img.height * scale)
-        resized = img.resize((w, h), Image.LANCZOS) if scale < 1.0 else img
-
+        resized = img.resize((int(img.width * 0.2), int(img.height * 0.2)), Image.LANCZOS)
         buf = io.BytesIO()
-        resized.save(buf, format="JPEG", quality=quality, optimize=True)
+        resized.save(buf, format="JPEG", quality=50)
         data = buf.getvalue()
-
-        if len(data) <= MAX_IMAGE_BYTES:
-            logger.info(f"Image prepared: {len(raw)} -> {len(data)} bytes ({w}x{h}, q={quality}, enhanced)")
-            return base64.b64encode(data).decode("utf-8"), "image/jpeg"
-
-        quality = max(quality - 10, 50)
-
-    # Last resort
-    resized = img.resize((int(img.width * 0.2), int(img.height * 0.2)), Image.LANCZOS)
-    buf = io.BytesIO()
-    resized.save(buf, format="JPEG", quality=50)
-    data = buf.getvalue()
-    return base64.b64encode(data).decode("utf-8"), "image/jpeg"
+        return base64.b64encode(data).decode("utf-8"), "image/jpeg"
+    else:
+        # Simple path: send raw bytes (no PIL available)
+        if len(raw) > MAX_IMAGE_BYTES:
+            logger.warning(f"Image {filepath} is {len(raw)} bytes, exceeds limit but no PIL to resize")
+        return base64.b64encode(raw).decode("utf-8"), mime_type
 
 logger = logging.getLogger(__name__)
 
@@ -195,8 +192,6 @@ Return ONLY valid JSON in this exact structure:
 
 async def classify_and_extract(filepath: str) -> dict:
     """Use Claude Vision to classify and extract data from any scanned mine report."""
-    if not HAS_PIL:
-        return {"error": "OCR not available (Pillow not installed)", "report_category": "unknown", "fields": {}}
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     image_data, mime_type = _prepare_image(filepath)
