@@ -3,8 +3,10 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "functions": {
-    "api/**/*.py": {
-      "maxDuration": 60
+    "api/index.py": {
+      "runtime": "@vercel/python@4.5.0",
+      "maxDuration": 60,
+      "excludeFiles": "{frontend/**,.venv/**,data/**,uploads/**,node_modules/**,.git/**}"
     }
   },
   "rewrites": [
