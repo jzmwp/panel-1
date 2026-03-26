@@ -4,12 +4,15 @@ import base64
 import io
 import logging
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-
 logger = logging.getLogger(__name__)
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 # Mine-appropriate color palette
 COLORS = ["#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea", "#0891b2", "#4f46e5", "#c026d3"]
@@ -17,6 +20,9 @@ COLORS = ["#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea", "#0891b2", "#4f
 
 def generate_chart(config: dict) -> dict:
     """Generate a chart and return base64-encoded PNG."""
+    if not HAS_MATPLOTLIB:
+        return {"error": "Chart generation not available in this environment (matplotlib not installed)"}
+
     try:
         chart_type = config["chart_type"]
         title = config.get("title", "")
