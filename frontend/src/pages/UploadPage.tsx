@@ -46,6 +46,46 @@ interface DocumentDetail {
   status: string;
 }
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB to stay under Vercel's 4.5MB limit
+
+async function compressImage(file: File): Promise<File> {
+  // Skip non-image files (PDFs etc)
+  if (!file.type.startsWith("image/")) return file;
+  if (file.size <= MAX_UPLOAD_BYTES) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+
+      // Scale down until we're under the limit
+      const scale = Math.min(1, Math.sqrt(MAX_UPLOAD_BYTES / file.size) * 0.9);
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+          } else {
+            resolve(file);
+          }
+        },
+        "image/jpeg",
+        0.85
+      );
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   shift_statutory_report: "Shift Statutory Report",
   longwall_production_report: "Longwall Production Report",
@@ -129,7 +169,8 @@ export default function UploadPage() {
 
     const formData = new FormData();
     for (const f of fileArray) {
-      formData.append("files", f);
+      const compressed = await compressImage(f);
+      formData.append("files", compressed);
     }
 
     try {
