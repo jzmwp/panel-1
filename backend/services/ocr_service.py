@@ -7,9 +7,14 @@ import logging
 import mimetypes
 
 import anthropic
-from PIL import Image
 
 from backend.config import settings
+
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
 MAX_IMAGE_BYTES = 4_500_000  # stay under Claude's 5MB limit
 
@@ -190,6 +195,8 @@ Return ONLY valid JSON in this exact structure:
 
 async def classify_and_extract(filepath: str) -> dict:
     """Use Claude Vision to classify and extract data from any scanned mine report."""
+    if not HAS_PIL:
+        return {"error": "OCR not available (Pillow not installed)", "report_category": "unknown", "fields": {}}
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     image_data, mime_type = _prepare_image(filepath)
