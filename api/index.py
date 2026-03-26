@@ -1,7 +1,7 @@
-import sys
-import os
+from fastapi import FastAPI
 
-# Ensure project root is in Python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+app = FastAPI()
 
-from backend.main import app
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "test": "minimal"}
