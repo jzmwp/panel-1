@@ -51,4 +51,13 @@ app.include_router(documents.router)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "project": "Panel 1"}
+    db_status = "unknown"
+    try:
+        from backend.database import SessionLocal
+        db = SessionLocal()
+        db.execute(__import__('sqlalchemy').text("SELECT 1"))
+        db.close()
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {e}"
+    return {"status": "ok", "project": "Panel 1", "db": db_status, "db_url": settings.database_url[:30] + "..."}
