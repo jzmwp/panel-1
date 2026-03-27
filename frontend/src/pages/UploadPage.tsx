@@ -235,8 +235,11 @@ export default function UploadPage() {
     [handleUpload]
   );
 
+  const [saving, setSaving] = useState(false);
+
   const handleSaveReview = async () => {
-    if (!uploadResult) return;
+    if (!uploadResult || saving) return;
+    setSaving(true);
     try {
       await fetch(`/api/documents/${uploadResult.id}`, {
         method: "PUT",
@@ -251,6 +254,8 @@ export default function UploadPage() {
     } catch (err: any) {
       setError(err.message);
       setStep("error");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -482,10 +487,20 @@ export default function UploadPage() {
                 </button>
                 <button
                   onClick={handleSaveReview}
-                  className="px-4 py-2 text-sm bg-mine-600 text-white rounded-lg hover:bg-mine-700 transition-colors flex items-center gap-2"
+                  disabled={saving}
+                  className="px-4 py-2 text-sm bg-mine-600 text-white rounded-lg hover:bg-mine-700 transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
-                  <Save className="w-4 h-4" />
-                  Confirm & Save
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Confirm & Save
+                    </>
+                  )}
                 </button>
               </div>
             }

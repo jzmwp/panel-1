@@ -1,12 +1,16 @@
 import { Routes, Route, NavLink } from "react-router-dom";
-import { MessageSquare, Upload, HardHat } from "lucide-react";
+import { MessageSquare, Upload, FileText, BarChart3, HardHat } from "lucide-react";
 import ChatPage from "./pages/ChatPage";
 import UploadPage from "./pages/UploadPage";
+import ReportsPage from "./pages/ReportsPage";
+import DashboardPage from "./pages/DashboardPage";
 import { cn } from "./lib/utils";
 
 const NAV_ITEMS = [
   { to: "/", icon: MessageSquare, label: "Chat" },
   { to: "/upload", icon: Upload, label: "Upload" },
+  { to: "/documents", icon: FileText, label: "Documents" },
+  { to: "/dashboard", icon: BarChart3, label: "Dashboard" },
 ];
 
 function Sidebar() {
@@ -54,6 +58,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ChatPage />} />
           <Route path="/upload" element={<UploadPage />} />
+          <Route path="/documents" element={<ReportsPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
         </Routes>
       </main>
     </div>
