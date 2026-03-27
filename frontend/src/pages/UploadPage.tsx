@@ -167,53 +167,59 @@ export default function UploadPage() {
     setError("");
     setUploadProgress({ total: fileArray.length, done: 0, current: fileArray[0].name });
 
-    const formData = new FormData();
-    for (const f of fileArray) {
-      const compressed = await compressImage(f);
-      formData.append("files", compressed);
-    }
+    // Upload files one at a time to avoid server timeout
+    const allResults: any[] = [];
+    const errors: string[] = [];
 
     try {
-      const res = await fetch("/api/documents/upload", {
-        method: "POST",
-        body: formData,
-      });
+      for (let i = 0; i < fileArray.length; i++) {
+        const f = fileArray[i];
+        setUploadProgress({ total: fileArray.length, done: i, current: f.name });
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        let msg = `Upload failed (HTTP ${res.status})`;
-        try {
-          const body = JSON.parse(text);
-          msg = body?.detail || body?.error || body?.message || msg;
-        } catch {
-          if (text.includes("FUNCTION_INVOCATION_FAILED")) {
-            msg = "The server timed out processing your document. Try a smaller image or try again.";
+        const compressed = await compressImage(f);
+        const formData = new FormData();
+        formData.append("files", compressed);
+
+        const res = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          let msg = `${f.name}: Upload failed (HTTP ${res.status})`;
+          try {
+            const body = JSON.parse(text);
+            msg = `${f.name}: ${body?.detail || body?.error || body?.message || msg}`;
+          } catch {
+            if (text.includes("FUNCTION_INVOCATION_FAILED") || res.status === 504) {
+              msg = `${f.name}: Server timed out. Try a smaller image.`;
+            }
           }
+          errors.push(msg);
+          continue;
         }
-        throw new Error(msg);
+
+        const results = await res.json();
+        if (Array.isArray(results)) {
+          allResults.push(...results);
+        }
       }
-
-      const results = await res.json();
-
-      // Handle if response is not an array (single error response)
-      if (!Array.isArray(results)) {
-        throw new Error(results?.detail || results?.message || JSON.stringify(results));
-      }
-
-      const errors = results.filter((r: any) => r.status === "error");
-      const successes = results.filter((r: any) => r.status !== "error");
 
       await fetchDocuments();
 
-      if (errors.length > 0 && successes.length === 0) {
-        throw new Error(errors.map((e: any) => `${e.filename}: ${e.error}`).join("\n"));
+      const successes = allResults.filter((r: any) => r.status !== "error");
+      const resultErrors = allResults.filter((r: any) => r.status === "error");
+      errors.push(...resultErrors.map((e: any) => `${e.filename}: ${e.error}`));
+
+      if (successes.length === 0 && errors.length > 0) {
+        throw new Error(errors.join("\n"));
       }
 
       if (isBatch || successes.length === 0) {
         setStep("saved");
         setUploadProgress({ total: fileArray.length, done: successes.length, current: "" });
       } else {
-        // Single file — show review
         const data = successes[0];
         setUploadResult(data);
         setEditedFields({ ...(data.extracted_data || {}) });
@@ -459,11 +465,19 @@ export default function UploadPage() {
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <Loader2 className="w-12 h-12 text-mine-500 animate-spin" />
             <div className="text-sm text-text-secondary">
-              AI is reading {uploadProgress.total > 1 ? `${uploadProgress.total} documents` : "the document"}...
+              Processing {uploadProgress.current}...
             </div>
             <div className="text-xs text-text-muted">
-              Classifying report type, extracting all fields
+              {uploadProgress.done} of {uploadProgress.total} done — classifying & extracting
             </div>
+            {uploadProgress.total > 1 && (
+              <div className="w-48 h-1.5 bg-surface-overlay rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-mine-500 rounded-full transition-all"
+                  style={{ width: `${((uploadProgress.done + 0.5) / uploadProgress.total) * 100}%` }}
+                />
+              </div>
+            )}
           </div>
         )}
 
